@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import type { User } from '../types';
 import { authAPI } from '../api';
 
@@ -8,6 +8,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
+  googleLogin: (credential: string) => Promise<void>;
   logout: () => void;
   updateUser: (user: User) => void;
 }
@@ -42,6 +43,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(data.user);
   };
 
+  const googleLogin = async (credential: string) => {
+    const data = await authAPI.googleLogin(credential);
+    localStorage.setItem('token', data.token);
+    setUser(data.user);
+  };
+
   const logout = () => {
     localStorage.removeItem('token');
     setUser(null);
@@ -58,6 +65,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isAuthenticated: !!user,
       login,
       register,
+      googleLogin,
       logout,
       updateUser
     }}>

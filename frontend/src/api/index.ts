@@ -43,6 +43,12 @@ export const authAPI = {
       body: JSON.stringify({ email, password }),
     }),
   
+  googleLogin: (credential: string) =>
+    fetchWithAuth('/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ credential }),
+    }),
+  
   getMe: () => fetchWithAuth('/auth/me'),
 };
 
@@ -109,6 +115,18 @@ export const profileAPI = {
       method: 'PUT',
       body: JSON.stringify(profile),
     }),
+
+  completeOnboarding: (data: {
+    displayName: string;
+    username: string;
+    gender: string;
+    bio: string;
+    socialLinks?: Record<string, string>;
+  }) =>
+    fetchWithAuth('/profile/onboarding', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 // CGPA API
@@ -130,3 +148,110 @@ export const cgpaAPI = {
   deleteFromArchive: (id: string) =>
     fetchWithAuth(`/cgpa/archive/${id}`, { method: 'DELETE' }),
 };
+
+// Timetable API
+export const timetableAPI = {
+  // Settings
+  getSettings: () => fetchWithAuth('/timetable/settings'),
+  updateSettings: (settings: {
+    attendanceThreshold?: number;
+    activeSemester?: number;
+    weekendSettings?: {
+      saturdayEnabled?: boolean;
+      sundayEnabled?: boolean;
+      saturdayMapsTo?: number | null;
+      sundayMapsTo?: number | null;
+    };
+    semesterStartDate?: string | null;
+    semesterEndDate?: string | null;
+  }) =>
+    fetchWithAuth('/timetable/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
+
+  // Courses
+  getCourses: (semester?: number) =>
+    fetchWithAuth(`/timetable/courses${semester ? `?semester=${semester}` : ''}`),
+  
+  createCourse: (course: {
+    name: string;
+    code: string;
+    venue: string;
+    credits: number;
+    semester: number;
+    color?: string;
+  }) =>
+    fetchWithAuth('/timetable/courses', {
+      method: 'POST',
+      body: JSON.stringify(course),
+    }),
+  
+  updateCourse: (id: string, updates: Partial<{
+    name: string;
+    code: string;
+    venue: string;
+    credits: number;
+    color: string;
+  }>) =>
+    fetchWithAuth(`/timetable/courses/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    }),
+  
+  deleteCourse: (id: string) =>
+    fetchWithAuth(`/timetable/courses/${id}`, { method: 'DELETE' }),
+
+  // Slots
+  getSlots: (semester?: number) =>
+    fetchWithAuth(`/timetable/slots${semester ? `?semester=${semester}` : ''}`),
+  
+  createSlot: (slot: {
+    courseId: string;
+    semester: number;
+    day: number;
+    startTime: string;
+    endTime: string;
+  }) =>
+    fetchWithAuth('/timetable/slots', {
+      method: 'POST',
+      body: JSON.stringify(slot),
+    }),
+  
+  updateSlot: (id: string, updates: Partial<{
+    day: number;
+    startTime: string;
+    endTime: string;
+  }>) =>
+    fetchWithAuth(`/timetable/slots/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    }),
+  
+  deleteSlot: (id: string) =>
+    fetchWithAuth(`/timetable/slots/${id}`, { method: 'DELETE' }),
+
+  // Attendance
+  getAttendance: (params?: { courseId?: string; startDate?: string; endDate?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.courseId) query.set('courseId', params.courseId);
+    if (params?.startDate) query.set('startDate', params.startDate);
+    if (params?.endDate) query.set('endDate', params.endDate);
+    return fetchWithAuth(`/timetable/attendance?${query.toString()}`);
+  },
+  
+  markAttendance: (data: {
+    slotId: string;
+    courseId: string;
+    date: string;
+    status: 'attended' | 'missed' | 'cancelled';
+  }) =>
+    fetchWithAuth('/timetable/attendance', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  getAttendanceStats: (semester: number) =>
+    fetchWithAuth(`/timetable/attendance/stats?semester=${semester}`),
+};
+

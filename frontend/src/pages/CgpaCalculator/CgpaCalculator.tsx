@@ -28,6 +28,12 @@ export const CgpaCalculator: React.FC = () => {
 
   useEffect(() => {
     loadArchive();
+    
+    // Add panic mode background
+    document.body.classList.add('cgpa-mode');
+    return () => {
+      document.body.classList.remove('cgpa-mode');
+    };
   }, []);
 
   const loadArchive = async () => {

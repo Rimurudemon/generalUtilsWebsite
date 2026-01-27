@@ -8,6 +8,7 @@ const notesRoutes = require('./routes/notes');
 const eventsRoutes = require('./routes/events');
 const profileRoutes = require('./routes/profile');
 const cgpaRoutes = require('./routes/cgpa');
+const timetableRoutes = require('./routes/timetable');
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use('/api/notes', notesRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/cgpa', cgpaRoutes);
+app.use('/api/timetable', timetableRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

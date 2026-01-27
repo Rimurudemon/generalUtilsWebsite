@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { GoogleLogin } from '@react-oauth/google';
 
 export const Register: React.FC = () => {
   const [username, setUsername] = useState('');
@@ -9,7 +10,7 @@ export const Register: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { register } = useAuth();
+  const { register, googleLogin } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -107,6 +108,34 @@ export const Register: React.FC = () => {
             {isLoading ? 'Creating account...' : 'Create Account'}
           </button>
         </form>
+
+        <div style={{ margin: '20px 0', textAlign: 'center' }}>
+          <div style={{ borderBottom: '1px solid var(--border-subtle)', marginBottom: '20px', position: 'relative' }}>
+            <span style={{ background: 'var(--bg-primary)', padding: '0 10px', position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', color: 'var(--text-secondary)' }}>
+              OR
+            </span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <GoogleLogin
+              onSuccess={async (credentialResponse) => {
+                if (credentialResponse.credential) {
+                  try {
+                    await googleLogin(credentialResponse.credential);
+                    navigate('/pdf-tools');
+                  } catch (err: any) {
+                    setError(err.message || 'Google Signup Failed');
+                  }
+                }
+              }}
+              onError={() => {
+                setError('Google Signup Failed');
+              }}
+              theme="filled_black"
+              shape="pill"
+              text="signup_with"
+            />
+          </div>
+        </div>
 
         <p className="auth-link">
           Already have an account? <Link to="/login">Sign in</Link>

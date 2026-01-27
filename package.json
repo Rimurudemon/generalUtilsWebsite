@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@react-oauth/google": "^0.13.4",
+    "@types/pdfjs-dist": "^2.10.377",
+    "google-auth-library": "^10.5.0",
+    "pdfjs-dist": "^5.4.530"
+  }
+}

@@ -3,6 +3,7 @@ export interface User {
   username: string;
   email: string;
   role: 'user' | 'admin';
+  isOnboarded: boolean;
   profile: UserProfile;
   stats: UserStats;
 }
@@ -10,6 +11,7 @@ export interface User {
 export interface UserProfile {
   displayName: string;
   bio: string;
+  gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
   avatar: string;
   location: string;
   website: string;
@@ -19,7 +21,13 @@ export interface UserProfile {
     github: string;
     linkedin: string;
     youtube: string;
+    discord: string;
   };
+  customLinks: Array<{
+    title: string;
+    url: string;
+    isActive: boolean;
+  }>;
   theme: 'dark' | 'paper';
 }
 
@@ -78,3 +86,67 @@ export interface CgpaRecord {
   totalCredits: number;
   createdAt: string;
 }
+
+// Timetable Types
+export interface TimetableCourse {
+  _id: string;
+  user: string;
+  semester: number;
+  name: string;
+  code: string;
+  venue: string;
+  credits: number;
+  color: string;
+  attendanceThreshold?: number;
+  createdAt: string;
+}
+
+export interface TimetableSlot {
+  _id: string;
+  user: string;
+  course: TimetableCourse;
+  semester: number;
+  day: number; // 0 = Monday, 6 = Sunday
+  startTime: string; // "HH:MM"
+  endTime: string; // "HH:MM"
+  createdAt: string;
+}
+
+export interface AttendanceRecord {
+  _id: string;
+  user: string;
+  slot: TimetableSlot;
+  course: TimetableCourse;
+  date: string;
+  status: 'attended' | 'missed' | 'cancelled';
+  createdAt: string;
+}
+
+export interface TimetableSettings {
+  _id: string;
+  user: string;
+  attendanceThreshold: number;
+  activeSemester: number;
+  weekendSettings: {
+    saturdayEnabled: boolean;
+    sundayEnabled: boolean;
+    saturdayMapsTo: number | null;
+    sundayMapsTo: number | null;
+  };
+  semesterStartDate: string | null;
+  semesterEndDate: string | null;
+  updatedAt: string;
+}
+
+export interface AttendanceStats {
+  course: TimetableCourse;
+  attended: number;
+  missed: number;
+  cancelled: number;
+  total: number;
+  percentage: number;
+  allowedLeaves: number;
+  leavesUsed: number;
+  leavesRemaining: number;
+}
+

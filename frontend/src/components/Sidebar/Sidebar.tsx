@@ -82,6 +82,21 @@ const LogoutIcon = () => (
   </svg>
 );
 
+const TimetableIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+    <path d="M8 14h.01" />
+    <path d="M12 14h.01" />
+    <path d="M16 14h.01" />
+    <path d="M8 18h.01" />
+    <path d="M12 18h.01" />
+    <path d="M16 18h.01" />
+  </svg>
+);
+
 export const Sidebar: React.FC = () => {
   const { logout, user } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -92,17 +107,34 @@ export const Sidebar: React.FC = () => {
     navigate('/login');
   };
 
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
   const navItems = [
     { to: '/pdf-tools', icon: <PdfIcon />, tooltip: 'PDF Tools' },
     { to: '/image-converter', icon: <ImageIcon />, tooltip: 'Image Converter' },
     { to: '/notes', icon: <CalendarIcon />, tooltip: 'Notes & Calendar' },
+    { to: '/timetable', icon: <TimetableIcon />, tooltip: 'Timetable' },
     { to: '/cgpa', icon: <CalculatorIcon />, tooltip: 'CGPA Calculator' },
-    { to: '/profile', icon: <ProfileIcon />, tooltip: 'Profile' },
   ];
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-logo">P</div>
+      {/* Profile Avatar - clickable to go to profile */}
+      <NavLink 
+        to="/profile" 
+        className={({ isActive }) => `sidebar-avatar ${isActive ? 'active' : ''}`}
+        data-tooltip="Profile"
+      >
+        {user?.profile?.avatar ? (
+          <img src={user.profile.avatar} alt={user.profile.displayName || user.username} />
+        ) : (
+          <span className="avatar-initials">
+            {getInitials(user?.profile?.displayName || user?.username || 'U')}
+          </span>
+        )}
+      </NavLink>
       
       <nav className="sidebar-nav">
         {navItems.map(item => (

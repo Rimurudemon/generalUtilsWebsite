@@ -19,17 +19,27 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    required: function() { return !this.googleId; },
     minlength: 6
+  },
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true
   },
   role: {
     type: String,
     enum: ['user', 'admin'],
     default: 'user'
   },
+  isOnboarded: {
+    type: Boolean,
+    default: false
+  },
   profile: {
     displayName: { type: String, default: '' },
     bio: { type: String, default: '', maxlength: 300 },
+    gender: { type: String, enum: ['male', 'female', 'other', 'prefer-not-to-say'], default: 'prefer-not-to-say' },
     avatar: { type: String, default: '' },
     location: { type: String, default: '' },
     website: { type: String, default: '' },
@@ -38,8 +48,14 @@ const userSchema = new mongoose.Schema({
       instagram: { type: String, default: '' },
       github: { type: String, default: '' },
       linkedin: { type: String, default: '' },
-      youtube: { type: String, default: '' }
+      youtube: { type: String, default: '' },
+      discord: { type: String, default: '' }
     },
+    customLinks: [{
+      title: { type: String, required: true },
+      url: { type: String, required: true },
+      isActive: { type: Boolean, default: true }
+    }],
     theme: { type: String, enum: ['dark', 'paper'], default: 'dark' }
   },
   stats: {

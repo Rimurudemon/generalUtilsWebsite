@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { profileAPI } from '../../api';
 
@@ -16,10 +16,14 @@ export const Profile: React.FC = () => {
       instagram: '',
       github: '',
       linkedin: '',
-      youtube: ''
-    }
+      youtube: '',
+      discord: ''
+    },
+    customLinks: [] as { title: string; url: string; isActive: boolean }[]
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -29,16 +33,55 @@ export const Profile: React.FC = () => {
         location: user.profile.location || '',
         website: user.profile.website || '',
         avatar: user.profile.avatar || '',
-        socialLinks: user.profile.socialLinks || {
-          twitter: '',
-          instagram: '',
-          github: '',
-          linkedin: '',
-          youtube: ''
-        }
+        socialLinks: {
+          twitter: user.profile.socialLinks?.twitter || '',
+          instagram: user.profile.socialLinks?.instagram || '',
+          github: user.profile.socialLinks?.github || '',
+          linkedin: user.profile.socialLinks?.linkedin || '',
+          youtube: user.profile.socialLinks?.youtube || '',
+          discord: user.profile.socialLinks?.discord || ''
+        },
+        customLinks: user.profile.customLinks || []
       });
     }
   }, [user]);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Image must be less than 2MB');
+      return;
+    }
+
+    setIsUploadingImage(true);
+
+    try {
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        setFormData(prev => ({ ...prev, avatar: base64 }));
+        setIsUploadingImage(false);
+      };
+      reader.onerror = () => {
+        alert('Failed to read image file');
+        setIsUploadingImage(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Failed to upload image:', error);
+      setIsUploadingImage(false);
+    }
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -54,7 +97,8 @@ export const Profile: React.FC = () => {
             location: formData.location,
             website: formData.website,
             avatar: formData.avatar,
-            socialLinks: formData.socialLinks
+            socialLinks: formData.socialLinks,
+            customLinks: formData.customLinks
           }
         });
       }
@@ -85,6 +129,39 @@ export const Profile: React.FC = () => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
+  const addCustomLink = () => {
+    setFormData(prev => ({
+      ...prev,
+      customLinks: [...prev.customLinks, { title: '', url: '', isActive: true }]
+    }));
+  };
+
+  const removeCustomLink = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      customLinks: prev.customLinks.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateCustomLink = (index: number, field: 'title' | 'url', value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      customLinks: prev.customLinks.map((link, i) => 
+        i === index ? { ...link, [field]: value } : link
+      )
+    }));
+  };
+  
+  // Social Platform Config for Cards
+  const socialPlatforms = [
+    { key: 'twitter', label: 'Twitter', icon: '🐦', color: '#1DA1F2', baseUrl: 'https://twitter.com/' },
+    { key: 'instagram', label: 'Instagram', icon: '📸', color: '#E1306C', baseUrl: 'https://instagram.com/' },
+    { key: 'github', label: 'GitHub', icon: '💻', color: '#333', baseUrl: 'https://github.com/' },
+    { key: 'linkedin', label: 'LinkedIn', icon: '💼', color: '#0077B5', baseUrl: 'https://linkedin.com/in/' },
+    { key: 'youtube', label: 'YouTube', icon: '📺', color: '#FF0000', baseUrl: 'https://youtube.com/@' },
+    { key: 'discord', label: 'Discord', icon: '💬', color: '#5865F2', baseUrl: '' },
+  ] as const;
+
   if (!user) {
     return (
       <div className="loading">
@@ -100,7 +177,7 @@ export const Profile: React.FC = () => {
         <p className="page-description">Customize your social card and share it with the world</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: 32 }}>
+      <div className="profile-page-grid">
         {/* Profile Card Preview */}
         <div>
           <h3 style={{ marginBottom: 16, color: 'var(--text-secondary)', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -108,16 +185,49 @@ export const Profile: React.FC = () => {
           </h3>
           <div className="profile-card">
             <div className="profile-cover" />
-            <div className="profile-avatar">
-              {formData.avatar ? (
-                <img src={formData.avatar} alt={formData.displayName} />
-              ) : (
-                getInitials(formData.displayName || user.username)
-              )}
-            </div>
             <div className="profile-content">
-              <h2 className="profile-name">{formData.displayName || user.username}</h2>
-              <p className="profile-username">@{user.username}</p>
+              <div className="profile-header-row">
+                <div className="profile-avatar-container">
+                  <div 
+                    className="profile-avatar"
+                    style={{ cursor: 'default' }}
+                  >
+                    {formData.avatar ? (
+                      <img src={formData.avatar} alt={formData.displayName} />
+                    ) : (
+                      getInitials(formData.displayName || user.username)
+                    )}
+                    {isUploadingImage && (
+                      <div className="avatar-upload-overlay" style={{ opacity: 1 }}>
+                        <div className="spinner" style={{ width: 24, height: 24 }} />
+                      </div>
+                    )}
+                  </div>
+                  {isEditing && (
+                    <button
+                      className="avatar-edit-btn"
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Edit profile picture"
+                      type="button"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                      </svg>
+                    </button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    style={{ display: 'none' }}
+                  />
+                </div>
+                <div className="profile-info">
+                  <h2 className="profile-name">{formData.displayName || user.username}</h2>
+                  <p className="profile-username">@{user.username}</p>
+                </div>
+              </div>
               {formData.bio && <p className="profile-bio">{formData.bio}</p>}
               <div className="profile-meta">
                 {formData.location && (
@@ -129,42 +239,121 @@ export const Profile: React.FC = () => {
                   </a>
                 )}
               </div>
-              <div className="profile-social">
-                {formData.socialLinks.twitter && (
-                  <a href={`https://twitter.com/${formData.socialLinks.twitter}`} target="_blank" rel="noopener noreferrer" className="profile-social-link" title="Twitter">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                    </svg>
+              {/* Enhanced Social Trays/Cards */}
+              <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {socialPlatforms.map(platform => {
+                  const username = formData.socialLinks[platform.key as keyof typeof formData.socialLinks];
+                  if (!username) return null;
+                  
+                  return (
+                    <a
+                      key={platform.key}
+                      href={platform.key === 'discord' ? '#' : `${platform.baseUrl}${username}`}
+                      target={platform.key === 'discord' ? undefined : "_blank"}
+                      rel="noopener noreferrer"
+                      className="social-card-tray"
+                      onClick={(e) => {
+                        if (platform.key === 'discord') {
+                          e.preventDefault();
+                          navigator.clipboard.writeText(username);
+                          alert('Discord username copied to clipboard!');
+                        }
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        background: 'var(--bg-elevated)',
+                        padding: '12px 16px',
+                        borderRadius: '16px',
+                        border: '1px solid var(--border-subtle)',
+                        textDecoration: 'none',
+                        color: 'var(--text-primary)',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ 
+                          width: 40, 
+                          height: 40, 
+                          borderRadius: '12px', 
+                          background: platform.color, 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center',
+                          color: 'white',
+                          fontSize: 20
+                        }}>
+                          {platform.icon}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 14 }}>{platform.label}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>@{username}</div>
+                        </div>
+                      </div>
+                      <div style={{ 
+                        background: platform.color, 
+                        color: 'white', 
+                        padding: '6px 16px', 
+                        borderRadius: '20px', 
+                        fontSize: 12, 
+                        fontWeight: 600 
+                      }}>
+                        {platform.key === 'discord' ? 'Copy' : 'Follow'}
+                      </div>
+                    </a>
+                  );
+                })}
+
+                {/* Custom Links Cards */}
+                {formData.customLinks.map((link, index) => (
+                  <a
+                    key={index}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: 'var(--bg-elevated)',
+                      padding: '12px 16px',
+                      borderRadius: '16px',
+                      border: '1px solid var(--border-subtle)',
+                      textDecoration: 'none',
+                      color: 'var(--text-primary)',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ 
+                        width: 40, 
+                        height: 40, 
+                        borderRadius: '12px', 
+                        background: 'var(--accent-secondary)', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontSize: 20
+                      }}>
+                        🔗
+                      </div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{link.title}</div>
+                    </div>
+                    <div style={{ 
+                      background: 'var(--bg-card)', 
+                      border: '1px solid var(--border-medium)',
+                      color: 'var(--text-primary)', 
+                      padding: '6px 16px', 
+                      borderRadius: '20px', 
+                      fontSize: 12, 
+                      fontWeight: 600 
+                    }}>
+                      Visit
+                    </div>
                   </a>
-                )}
-                {formData.socialLinks.instagram && (
-                  <a href={`https://instagram.com/${formData.socialLinks.instagram}`} target="_blank" rel="noopener noreferrer" className="profile-social-link" title="Instagram">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
-                    </svg>
-                  </a>
-                )}
-                {formData.socialLinks.github && (
-                  <a href={`https://github.com/${formData.socialLinks.github}`} target="_blank" rel="noopener noreferrer" className="profile-social-link" title="GitHub">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                      <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
-                    </svg>
-                  </a>
-                )}
-                {formData.socialLinks.linkedin && (
-                  <a href={`https://linkedin.com/in/${formData.socialLinks.linkedin}`} target="_blank" rel="noopener noreferrer" className="profile-social-link" title="LinkedIn">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                    </svg>
-                  </a>
-                )}
-                {formData.socialLinks.youtube && (
-                  <a href={`https://youtube.com/@${formData.socialLinks.youtube}`} target="_blank" rel="noopener noreferrer" className="profile-social-link" title="YouTube">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                    </svg>
-                  </a>
-                )}
+                ))}
               </div>
             </div>
           </div>
@@ -300,17 +489,25 @@ export const Profile: React.FC = () => {
               </div>
             </div>
 
-            <div className="input-group">
-              <label className="input-label">Avatar URL</label>
-              <input
-                type="url"
-                className="input"
-                value={formData.avatar}
-                onChange={(e) => setFormData({ ...formData, avatar: e.target.value })}
-                disabled={!isEditing}
-                placeholder="https://example.com/avatar.jpg"
-              />
-            </div>
+            {isEditing && (
+              <div style={{ 
+                padding: '12px 16px', 
+                background: 'rgba(139, 92, 246, 0.1)', 
+                borderRadius: 'var(--radius-md)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12
+              }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+                  Click the pencil icon on the avatar to upload a new profile picture
+                </span>
+              </div>
+            )}
 
             <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)', margin: '8px 0' }} />
 
@@ -372,6 +569,61 @@ export const Profile: React.FC = () => {
                   placeholder="channel"
                 />
               </div>
+              <div className="input-group">
+                <label className="input-label">Discord</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.socialLinks.discord}
+                  onChange={(e) => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, discord: e.target.value } })}
+                  disabled={!isEditing}
+                  placeholder="username"
+                />
+              </div>
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)', margin: '8px 0' }} />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 style={{ color: 'var(--text-secondary)', marginBottom: 0 }}>Custom Links</h4>
+              {isEditing && (
+                <button className="btn btn-secondary btn-sm" onClick={addCustomLink}>
+                  + Add Link
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {formData.customLinks.map((link, index) => (
+                <div key={index} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    className="input"
+                    value={link.title}
+                    onChange={(e) => updateCustomLink(index, 'title', e.target.value)}
+                    disabled={!isEditing}
+                    placeholder="Title (e.g. Portfolio)"
+                  />
+                  <input
+                    type="text"
+                    className="input"
+                    value={link.url}
+                    onChange={(e) => updateCustomLink(index, 'url', e.target.value)}
+                    disabled={!isEditing}
+                    placeholder="URL (https://...)"
+                  />
+                  {isEditing && (
+                    <button className="btn btn-ghost" style={{ color: 'var(--error)' }} onClick={() => removeCustomLink(index)}>
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+              {formData.customLinks.length === 0 && (
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  No custom links added yet.
+                </p>
+              )}
             </div>
           </div>
         </div>

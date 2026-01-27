@@ -2,17 +2,18 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { Layout } from './components/Layout';
-import { Login, Register } from './pages/Auth';
+import { Login, Register, Onboarding } from './pages/Auth';
 import { PdfTools } from './pages/PdfTools';
 import { ImageConverter } from './pages/ImageConverter';
 import { NotesCalendar } from './pages/NotesCalendar';
 import { CgpaCalculator } from './pages/CgpaCalculator';
 import { Profile } from './pages/Profile';
+import { Timetable } from './pages/Timetable';
 import './index.css';
 
 // Protected Route wrapper
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return (
@@ -26,12 +27,17 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     return <Navigate to="/login" replace />;
   }
 
+  // Redirect to onboarding if user hasn't completed it
+  if (user && !user.isOnboarded) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
   return <>{children}</>;
 };
 
 // Auth Route wrapper (redirect if already logged in)
 const AuthRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return (
@@ -42,6 +48,34 @@ const AuthRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }
 
   if (isAuthenticated) {
+    // If authenticated but not onboarded, go to onboarding
+    if (user && !user.isOnboarded) {
+      return <Navigate to="/onboarding" replace />;
+    }
+    return <Navigate to="/pdf-tools" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// Onboarding Route wrapper (only for authenticated users who need onboarding)
+const OnboardingRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isLoading, user } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="auth-container">
+        <div className="spinner" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // If already onboarded, redirect to app
+  if (user && user.isOnboarded) {
     return <Navigate to="/pdf-tools" replace />;
   }
 
@@ -69,6 +103,16 @@ const AppRoutes: React.FC = () => {
         }
       />
 
+      {/* Onboarding Route */}
+      <Route
+        path="/onboarding"
+        element={
+          <OnboardingRoute>
+            <Onboarding />
+          </OnboardingRoute>
+        }
+      />
+
       {/* Protected Routes */}
       <Route
         path="/"
@@ -83,6 +127,7 @@ const AppRoutes: React.FC = () => {
         <Route path="image-converter" element={<ImageConverter />} />
         <Route path="notes" element={<NotesCalendar />} />
         <Route path="cgpa" element={<CgpaCalculator />} />
+        <Route path="timetable" element={<Timetable />} />
         <Route path="profile" element={<Profile />} />
       </Route>
 
