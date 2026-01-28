@@ -1,7 +1,18 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
+
+// Ensure data directory exists
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+// Initialize database
+const { initializeDatabase } = require('./db/database');
+initializeDatabase();
 
 const authRoutes = require('./routes/auth');
 const notesRoutes = require('./routes/notes');
@@ -16,12 +27,6 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// Connect to MongoDB
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/personalwebsite';
-mongoose.connect(MONGO_URI)
-  .then(() => console.log('✓ MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
-
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/notes', notesRoutes);
@@ -32,7 +37,7 @@ app.use('/api/timetable', timetableRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', database: 'sqlite', timestamp: new Date().toISOString() });
 });
 
 const PORT = process.env.PORT || 5000;

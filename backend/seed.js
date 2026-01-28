@@ -1,18 +1,24 @@
-const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/personalwebsite')
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// Ensure data directory exists
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
 
-const User = require('./models/User');
+const { db, initializeDatabase, userHelpers } = require('./db/database');
+
+// Initialize the database tables
+initializeDatabase();
 
 async function seedAdmin() {
   try {
     // Check if admin already exists
-    const existingAdmin = await User.findOne({ role: 'admin' });
+    const existingAdmin = db.prepare("SELECT * FROM users WHERE role = 'admin'").get();
+    
     if (existingAdmin) {
       console.log('Admin user already exists:');
       console.log('  Email:', existingAdmin.email);
@@ -20,18 +26,14 @@ async function seedAdmin() {
       process.exit(0);
     }
 
-    // Create admin user
-    const admin = new User({
-      username: 'admin',
-      email: 'admin@example.com',
-      password: 'admin123',
-      role: 'admin',
-      profile: {
-        displayName: 'Admin User'
-      }
-    });
+    // Hash password
+    const hashedPassword = await bcrypt.hash('admin123', 12);
 
-    await admin.save();
+    // Create admin user
+    const result = db.prepare(`
+      INSERT INTO users (username, email, password, role, display_name, is_onboarded)
+      VALUES (?, ?, ?, 'admin', ?, 1)
+    `).run('admin', 'admin@example.com', hashedPassword, 'Admin User');
 
     console.log('✓ Admin user created successfully!');
     console.log('');

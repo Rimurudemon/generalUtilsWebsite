@@ -11,7 +11,7 @@ const COLORS = [
 ];
 
 // Scale constants
-const HOUR_WIDTH = 100; // px per hour (horizontal width)
+const HOUR_WIDTH = 120; // px per hour (horizontal width) - wider for full-width layout
 const ROW_HEIGHT = 100; // px per day row
 
 export const Timetable: React.FC = () => {
@@ -20,8 +20,14 @@ export const Timetable: React.FC = () => {
   const [courses, setCourses] = useState<TimetableCourse[]>([]);
   const [slots, setSlots] = useState<TimetableSlot[]>([]);
   const [stats, setStats] = useState<AttendanceStats[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<Array<{ slotId: string; courseId: string; date: string; status: 'attended' | 'missed' | 'cancelled' }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'timetable' | 'attendance'>('timetable');
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]); // Today's date
+  
+  // Pending attendance selections (before confirmation)
+  const [pendingAttendance, setPendingAttendance] = useState<Record<string, 'attended' | 'missed' | 'cancelled'>>({});
+  const [isSavingAttendance, setIsSavingAttendance] = useState(false);
   
   // Course form
   const [showCourseForm, setShowCourseForm] = useState(false);
@@ -37,6 +43,10 @@ export const Timetable: React.FC = () => {
 
   // Settings modal
   const [showSettings, setShowSettings] = useState(false);
+  
+  // Floating courses panel
+  const [showCoursesPanel, setShowCoursesPanel] = useState(false);
+
 
   const semester = settings?.activeSemester || 1;
 
@@ -60,9 +70,33 @@ export const Timetable: React.FC = () => {
     }
   }, [semester]);
 
+  // Load attendance records for selected date
+  const loadAttendanceForDate = useCallback(async (date: string) => {
+    try {
+      const records = await timetableAPI.getAttendance({ startDate: date, endDate: date });
+      setAttendanceRecords(records.map((r: any) => ({
+        slotId: r.slot?._id || r.slotId,
+        courseId: r.course?._id || r.courseId,
+        date: r.date,
+        status: r.status
+      })));
+    } catch (error) {
+      console.error('Failed to load attendance:', error);
+      setAttendanceRecords([]);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (selectedDate) {
+      loadAttendanceForDate(selectedDate);
+      // Clear pending selections when date changes
+      setPendingAttendance({});
+    }
+  }, [selectedDate, loadAttendanceForDate]);
 
   // Global Resize Listeners
   useEffect(() => {
@@ -195,6 +229,74 @@ export const Timetable: React.FC = () => {
     }
   };
 
+  // Select attendance (pending, not yet saved)
+  const selectAttendance = (slotId: string, status: 'attended' | 'missed' | 'cancelled') => {
+    setPendingAttendance(prev => {
+      // If clicking the same status, deselect it
+      if (prev[slotId] === status) {
+        const { [slotId]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [slotId]: status };
+    });
+  };
+
+  // Confirm and save all pending attendance
+  const confirmAttendance = async () => {
+    const pendingEntries = Object.entries(pendingAttendance);
+    if (pendingEntries.length === 0) return;
+    
+    setIsSavingAttendance(true);
+    try {
+      // Save all pending attendance
+      for (const [slotId, status] of pendingEntries) {
+        const slot = slots.find(s => s._id === slotId);
+        if (slot) {
+          await timetableAPI.markAttendance({
+            slotId,
+            courseId: slot.course._id,
+            date: selectedDate,
+            status
+          });
+        }
+      }
+      
+      // Clear pending and reload data
+      setPendingAttendance({});
+      await loadAttendanceForDate(selectedDate);
+      const newStats = await timetableAPI.getAttendanceStats(semester);
+      setStats(newStats);
+    } catch (error) {
+      console.error('Failed to save attendance:', error);
+    } finally {
+      setIsSavingAttendance(false);
+    }
+  };
+
+  // Get day of week from date (0=Monday, 6=Sunday to match DAYS array)
+  const getDayFromDate = (dateStr: string): number => {
+    const date = new Date(dateStr);
+    const day = date.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+    // Convert to 0=Monday, 1=Tuesday, ..., 6=Sunday
+    return day === 0 ? 6 : day - 1;
+  };
+
+  // Get slots for a specific day
+  const getSlotsForDay = (dayIndex: number) => {
+    return slots.filter(s => s.day === dayIndex);
+  };
+
+  // Get attendance status for a slot on selected date (saved status)
+  const getAttendanceStatus = (slotId: string): 'attended' | 'missed' | 'cancelled' | null => {
+    const record = attendanceRecords.find(r => r.slotId === slotId && r.date === selectedDate);
+    return record?.status || null;
+  };
+  
+  // Get the display status (pending takes priority over saved)
+  const getDisplayStatus = (slotId: string): 'attended' | 'missed' | 'cancelled' | null => {
+    return pendingAttendance[slotId] || getAttendanceStatus(slotId);
+  };
+
   // Time helpers
   const timeToMinutes = (time: string) => {
     const [h, m] = time.split(':').map(Number);
@@ -281,19 +383,19 @@ export const Timetable: React.FC = () => {
 
       {activeTab === 'timetable' && (
         <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr', gap: 24 }}>
-          {/* Course Cards Panel */}
-          <div className="card" style={{ height: 'fit-content', maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' }}>
+          {/* Course Cards Panel - Fixed Sidebar */}
+          <div className="card" style={{ height: 'fit-content', maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ fontSize: 16, fontWeight: 600 }}>Courses</h3>
               <button className="btn btn-primary btn-sm" onClick={() => setShowCourseForm(true)}>
-                +
+                + Add
               </button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {courses.length === 0 && (
                 <p style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: 16 }}>
-                  No courses.
+                  No courses yet. Add your first course!
                 </p>
               )}
               {courses.map(course => (
@@ -315,8 +417,8 @@ export const Timetable: React.FC = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{course.name}</div>
-                      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
-                        {course.code}
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                        {course.code} • {course.credits} cr
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 4 }}>
@@ -345,13 +447,13 @@ export const Timetable: React.FC = () => {
             </div>
             
             <div style={{ marginTop: 20, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
-              <strong>Tip:</strong> Drag courses to the grid. Drag the right edge of a slot to resize it.
+              <strong>Tip:</strong> Drag courses to the grid to schedule them.
             </div>
           </div>
 
           {/* Timetable Grid */}
           <div className="card" style={{ overflow: 'auto', padding: 0 }}>
-            <div style={{ minWidth: 1400, padding: 16 }}> {/* Wide layout */}
+            <div style={{ minWidth: 1400, padding: 16 }}>
               {/* Header row: Times */}
               <div style={{ display: 'grid', gridTemplateColumns: `120px repeat(13, ${HOUR_WIDTH}px)`, borderBottom: '1px solid var(--border-subtle)' }}>
                 <div style={{ padding: 12, fontWeight: 600, fontSize: 13, color: 'var(--text-muted)' }}>Day / Time</div>
@@ -552,9 +654,220 @@ export const Timetable: React.FC = () => {
       )}
 
       {activeTab === 'attendance' && (
-        <div>
+        <div style={{ display: 'grid', gap: 24 }}>
+          {/* Date Picker & Today's Classes */}
           <div className="card">
-            <h3 style={{ marginBottom: 20, fontSize: 18 }}>📊 Attendance Dashboard</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 16 }}>
+              <h3 style={{ fontSize: 18, margin: 0 }}>📅 Mark Attendance</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button 
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    const date = new Date(selectedDate);
+                    date.setDate(date.getDate() - 1);
+                    setSelectedDate(date.toISOString().split('T')[0]);
+                  }}
+                >
+                  ◀
+                </button>
+                <input
+                  type="date"
+                  className="input"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  style={{ width: 160 }}
+                />
+                <button 
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    const date = new Date(selectedDate);
+                    date.setDate(date.getDate() + 1);
+                    setSelectedDate(date.toISOString().split('T')[0]);
+                  }}
+                >
+                  ▶
+                </button>
+                <button 
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                >
+                  Today
+                </button>
+              </div>
+            </div>
+
+            {/* Day name display */}
+            <div style={{ marginBottom: 16, color: 'var(--text-secondary)', fontSize: 14 }}>
+              {DAYS[getDayFromDate(selectedDate)]} • {new Date(selectedDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            </div>
+
+            {/* Classes for this day */}
+            {(() => {
+              const dayIndex = getDayFromDate(selectedDate);
+              const daySlots = getSlotsForDay(dayIndex);
+              
+              if (daySlots.length === 0) {
+                return (
+                  <div style={{ 
+                    padding: 40, 
+                    textAlign: 'center', 
+                    color: 'var(--text-muted)',
+                    background: 'var(--bg-secondary)',
+                    borderRadius: 12
+                  }}>
+                    <p style={{ fontSize: 32, marginBottom: 8 }}>🎉</p>
+                    <p>No classes scheduled for this day!</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {daySlots.map(slot => {
+                    const savedStatus = getAttendanceStatus(slot._id);
+                    const displayStatus = getDisplayStatus(slot._id);
+                    const isPending = pendingAttendance[slot._id] !== undefined;
+                    
+                    return (
+                      <div
+                        key={slot._id}
+                        style={{
+                          padding: 16,
+                          background: slot.course.color + '15',
+                          borderLeft: `4px solid ${slot.course.color}`,
+                          borderRadius: 12,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: 16,
+                          // Highlight if there's a pending change
+                          boxShadow: isPending ? '0 0 0 2px var(--accent-primary)' : 'none'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 15 }}>
+                            {slot.course.name}
+                            {isPending && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--accent-primary)', fontWeight: 500 }}>• unsaved</span>}
+                          </div>
+                          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
+                            {slot.course.code} • {slot.startTime} - {slot.endTime}
+                            {slot.course.venue && ` • ${slot.course.venue}`}
+                          </div>
+                          {savedStatus && !isPending && (
+                            <div style={{ fontSize: 11, marginTop: 4, color: 'var(--text-muted)' }}>
+                              Marked as: {savedStatus === 'attended' ? '✓ Attended' : savedStatus === 'missed' ? '✗ Absent' : '⊘ Cancelled'}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Show status badge if already saved, otherwise show buttons */}
+                        {savedStatus && !isPending ? (
+                          // Already saved - show status badge
+                          <div style={{
+                            padding: '8px 16px',
+                            borderRadius: 8,
+                            fontWeight: 600,
+                            fontSize: 14,
+                            background: savedStatus === 'attended' ? '#10b981' : savedStatus === 'missed' ? '#ef4444' : '#f59e0b',
+                            color: 'white'
+                          }}>
+                            {savedStatus === 'attended' ? '✓ Attended' : savedStatus === 'missed' ? '✗ Absent' : '⊘ Cancelled'}
+                          </div>
+                        ) : (
+                          // Not saved yet or pending - show buttons
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              className={`btn btn-sm ${displayStatus === 'attended' ? '' : 'btn-ghost'}`}
+                              style={{
+                                background: displayStatus === 'attended' ? '#10b981' : 'transparent',
+                                color: displayStatus === 'attended' ? 'white' : '#10b981',
+                                border: `2px solid #10b981`,
+                                fontWeight: 600,
+                                minWidth: 90
+                              }}
+                              onClick={() => selectAttendance(slot._id, 'attended')}
+                            >
+                              ✓ Attended
+                            </button>
+                            <button
+                              className={`btn btn-sm ${displayStatus === 'missed' ? '' : 'btn-ghost'}`}
+                              style={{
+                                background: displayStatus === 'missed' ? '#ef4444' : 'transparent',
+                                color: displayStatus === 'missed' ? 'white' : '#ef4444',
+                                border: `2px solid #ef4444`,
+                                fontWeight: 600,
+                                minWidth: 80
+                              }}
+                              onClick={() => selectAttendance(slot._id, 'missed')}
+                            >
+                              ✗ Absent
+                            </button>
+                            <button
+                              className={`btn btn-sm ${displayStatus === 'cancelled' ? '' : 'btn-ghost'}`}
+                              style={{
+                                background: displayStatus === 'cancelled' ? '#f59e0b' : 'transparent',
+                                color: displayStatus === 'cancelled' ? 'white' : '#f59e0b',
+                                border: `2px solid #f59e0b`,
+                                fontWeight: 600,
+                                minWidth: 90
+                              }}
+                              onClick={() => selectAttendance(slot._id, 'cancelled')}
+                            >
+                              ⊘ Cancelled
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Confirm Button */}
+                  {Object.keys(pendingAttendance).length > 0 && (
+                    <div style={{ 
+                      marginTop: 8, 
+                      padding: 16, 
+                      background: 'var(--bg-elevated)', 
+                      borderRadius: 12,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      border: '2px solid var(--accent-primary)'
+                    }}>
+                      <div>
+                        <div style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>
+                          {Object.keys(pendingAttendance).length} class{Object.keys(pendingAttendance).length > 1 ? 'es' : ''} selected
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                          Click confirm to save your attendance
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button 
+                          className="btn btn-secondary"
+                          onClick={() => setPendingAttendance({})}
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          className="btn btn-primary"
+                          onClick={confirmAttendance}
+                          disabled={isSavingAttendance}
+                          style={{ minWidth: 100 }}
+                        >
+                          {isSavingAttendance ? 'Saving...' : '✓ Confirm'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Overall Attendance Stats */}
+          <div className="card">
+            <h3 style={{ marginBottom: 20, fontSize: 18 }}>📊 Overall Attendance Stats</h3>
             
             {stats.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 40 }}>
@@ -564,7 +877,7 @@ export const Timetable: React.FC = () => {
               <div style={{ display: 'grid', gap: 16 }}>
                 {stats.map(stat => {
                   const threshold = stat.course.attendanceThreshold || settings?.attendanceThreshold || 80;
-                  const isWarning = stat.percentage <= threshold + 2 && stat.percentage > threshold;
+                  const isWarning = stat.percentage <= threshold + 5 && stat.percentage > threshold;
                   const isDanger = stat.percentage <= threshold;
                   
                   return (
@@ -581,7 +894,7 @@ export const Timetable: React.FC = () => {
                         <div>
                           <div style={{ fontWeight: 600, fontSize: 15 }}>{stat.course.name}</div>
                           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                            {stat.course.code} • {stat.course.credits} credits
+                            {stat.course.code} • {stat.course.credits} credits • Min: {threshold}%
                           </div>
                         </div>
                         <div style={{ 
@@ -599,23 +912,35 @@ export const Timetable: React.FC = () => {
                         background: 'var(--bg-card)', 
                         borderRadius: 4, 
                         overflow: 'hidden',
-                        marginBottom: 12
+                        marginBottom: 12,
+                        position: 'relative'
                       }}>
+                        {/* Threshold line */}
+                        <div style={{
+                          position: 'absolute',
+                          left: `${threshold}%`,
+                          top: 0,
+                          bottom: 0,
+                          width: 2,
+                          background: 'var(--text-muted)',
+                          zIndex: 2
+                        }} />
                         <div style={{
                           height: '100%',
-                          width: `${stat.percentage}%`,
+                          width: `${Math.min(stat.percentage, 100)}%`,
                           background: isDanger ? 'var(--error)' : isWarning ? '#f59e0b' : 'var(--success)',
                           borderRadius: 4,
                           transition: 'width 0.3s ease'
                         }} />
                       </div>
 
-                      <div style={{ display: 'flex', gap: 24, fontSize: 12, color: 'var(--text-secondary)' }}>
-                        <span>✅ Attended: {stat.attended}</span>
-                        <span>❌ Missed: {stat.missed}</span>
-                        <span>🚫 Cancelled: {stat.cancelled}</span>
+                      <div style={{ display: 'flex', gap: 24, fontSize: 12, color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+                        <span style={{ color: '#10b981' }}>✅ Attended: {stat.attended}</span>
+                        <span style={{ color: '#ef4444' }}>❌ Missed: {stat.missed}</span>
+                        <span style={{ color: '#f59e0b' }}>🚫 Cancelled: {stat.cancelled}</span>
+                        <span style={{ color: 'var(--text-muted)' }}>📚 Total Classes: {stat.total}</span>
                         <span style={{ marginLeft: 'auto', color: stat.leavesRemaining <= 2 ? 'var(--error)' : 'inherit' }}>
-                          📋 Leaves remaining: {stat.leavesRemaining}/{stat.allowedLeaves}
+                          📋 Can miss {stat.leavesRemaining} more
                         </span>
                       </div>
                     </div>

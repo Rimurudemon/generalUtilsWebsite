@@ -1,6 +1,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const { db, userHelpers } = require('../db/database');
 const { auth } = require('../middleware/auth');
 const { OAuth2Client } = require('google-auth-library');
 
@@ -14,38 +15,32 @@ router.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
 
     // Check if user exists
-    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    const existingUser = userHelpers.findByEmailOrUsername(email, username);
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists with this email or username.' });
     }
 
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
+
     // Create user
-    const user = new User({
+    const user = userHelpers.create({
       username,
       email,
-      password,
-      profile: { displayName: username }
+      password: hashedPassword,
+      displayName: username
     });
-    await user.save();
 
     // Generate token
     const token = jwt.sign(
-      { userId: user._id },
+      { userId: user.id },
       process.env.JWT_SECRET || 'fallback-secret',
       { expiresIn: '7d' }
     );
 
     res.status(201).json({
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        isOnboarded: user.isOnboarded,
-        profile: user.profile,
-        stats: user.stats
-      }
+      user: userHelpers.toApiFormat(user)
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -57,33 +52,25 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+    const user = userHelpers.findByEmail(email);
     if (!user) {
       return res.status(400).json({ error: 'Invalid credentials.' });
     }
 
-    const isMatch = await user.comparePassword(password);
+    const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ error: 'Invalid credentials.' });
     }
 
     const token = jwt.sign(
-      { userId: user._id },
+      { userId: user.id },
       process.env.JWT_SECRET || 'fallback-secret',
       { expiresIn: '7d' }
     );
 
     res.json({
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        isOnboarded: user.isOnboarded,
-        profile: user.profile,
-        stats: user.stats
-      }
+      user: userHelpers.toApiFormat(user)
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -103,45 +90,33 @@ router.post('/google', async (req, res) => {
     
     const { email, name, picture, sub: googleId } = ticket.getPayload();
 
-    let user = await User.findOne({ email });
+    let user = userHelpers.findByEmail(email);
 
     if (user) {
       // If user exists but no googleId, verify and link it
-      if (!user.googleId) {
-        user.googleId = googleId;
-        await user.save();
+      if (!user.google_id) {
+        user = userHelpers.update(user.id, { google_id: googleId });
       }
     } else {
-      // Create new user
-      user = new User({
+      // Create new user with unique username
+      user = userHelpers.create({
         email,
         googleId,
-        username: email.split('@')[0] + Math.random().toString(36).substring(7), // Generate unique username
-        profile: {
-          displayName: name,
-          avatar: picture
-        }
+        username: email.split('@')[0] + Math.random().toString(36).substring(7),
+        displayName: name,
+        avatar: picture
       });
-      await user.save();
     }
 
     const token = jwt.sign(
-      { userId: user._id },
+      { userId: user.id },
       process.env.JWT_SECRET || 'fallback-secret',
       { expiresIn: '7d' }
     );
 
     res.json({
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        isOnboarded: user.isOnboarded,
-        profile: user.profile,
-        stats: user.stats
-      }
+      user: userHelpers.toApiFormat(user)
     });
 
   } catch (error) {
@@ -153,15 +128,7 @@ router.post('/google', async (req, res) => {
 // Get current user
 router.get('/me', auth, async (req, res) => {
   res.json({
-    user: {
-      id: req.user._id,
-      username: req.user.username,
-      email: req.user.email,
-      role: req.user.role,
-      isOnboarded: req.user.isOnboarded,
-      profile: req.user.profile,
-      stats: req.user.stats
-    }
+    user: userHelpers.toApiFormat(req.user)
   });
 });
 

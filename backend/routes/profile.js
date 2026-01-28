@@ -1,5 +1,5 @@
 const express = require('express');
-const User = require('../models/User');
+const { db, userHelpers } = require('../db/database');
 const { auth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -7,18 +7,19 @@ const router = express.Router();
 // Get public profile by username
 router.get('/:username', async (req, res) => {
   try {
-    const user = await User.findOne({ username: req.params.username })
-      .select('username profile stats createdAt');
+    const user = userHelpers.findByUsername(req.params.username);
     
     if (!user) {
       return res.status(404).json({ error: 'User not found.' });
     }
 
+    const apiUser = userHelpers.toApiFormat(user);
+    
     res.json({
-      username: user.username,
-      profile: user.profile,
-      stats: user.stats,
-      memberSince: user.createdAt
+      username: apiUser.username,
+      profile: apiUser.profile,
+      stats: apiUser.stats,
+      memberSince: user.created_at
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -30,33 +31,35 @@ router.put('/', auth, async (req, res) => {
   try {
     const { displayName, bio, avatar, location, website, socialLinks, theme } = req.body;
     
-    const updateData = {
-      'profile.displayName': displayName,
-      'profile.bio': bio,
-      'profile.avatar': avatar,
-      'profile.location': location,
-      'profile.website': website,
-      'profile.theme': theme
-    };
-
+    const updates = {};
+    
+    if (displayName !== undefined) updates.display_name = displayName;
+    if (bio !== undefined) updates.bio = bio;
+    if (avatar !== undefined) updates.avatar = avatar;
+    if (location !== undefined) updates.location = location;
+    if (website !== undefined) updates.website = website;
+    if (theme !== undefined) updates.theme = theme;
+    
     if (socialLinks) {
-      updateData['profile.socialLinks'] = socialLinks;
+      if (socialLinks.twitter !== undefined) updates.social_twitter = socialLinks.twitter;
+      if (socialLinks.instagram !== undefined) updates.social_instagram = socialLinks.instagram;
+      if (socialLinks.github !== undefined) updates.social_github = socialLinks.github;
+      if (socialLinks.linkedin !== undefined) updates.social_linkedin = socialLinks.linkedin;
+      if (socialLinks.youtube !== undefined) updates.social_youtube = socialLinks.youtube;
+      if (socialLinks.discord !== undefined) updates.social_discord = socialLinks.discord;
     }
 
     if (req.body.customLinks) {
-      updateData['profile.customLinks'] = req.body.customLinks;
+      updates.custom_links = JSON.stringify(req.body.customLinks);
     }
 
-    const user = await User.findByIdAndUpdate(
-      req.userId,
-      { $set: updateData },
-      { new: true }
-    ).select('-password');
+    const user = userHelpers.update(req.userId, updates);
+    const apiUser = userHelpers.toApiFormat(user);
 
     res.json({
-      username: user.username,
-      profile: user.profile,
-      stats: user.stats
+      username: apiUser.username,
+      profile: apiUser.profile,
+      stats: apiUser.stats
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -69,45 +72,38 @@ router.post('/onboarding', auth, async (req, res) => {
     const { displayName, username, gender, bio, socialLinks } = req.body;
     
     // Check if username is already taken (if changing)
-    const existingUser = await User.findById(req.userId);
+    const existingUser = userHelpers.findById(req.userId);
     if (username && username !== existingUser.username) {
-      const usernameTaken = await User.findOne({ username, _id: { $ne: req.userId } });
+      const usernameTaken = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, req.userId);
       if (usernameTaken) {
         return res.status(400).json({ error: 'Username is already taken.' });
       }
     }
     
-    const updateData = {
-      isOnboarded: true,
-      'profile.displayName': displayName || '',
-      'profile.bio': bio || '',
-      'profile.gender': gender || 'prefer-not-to-say'
+    const updates = {
+      is_onboarded: 1,
+      display_name: displayName || '',
+      bio: bio || '',
+      gender: gender || 'prefer-not-to-say'
     };
 
     if (username) {
-      updateData.username = username;
+      updates.username = username;
     }
 
     if (socialLinks) {
-      updateData['profile.socialLinks'] = socialLinks;
+      if (socialLinks.twitter !== undefined) updates.social_twitter = socialLinks.twitter;
+      if (socialLinks.instagram !== undefined) updates.social_instagram = socialLinks.instagram;
+      if (socialLinks.github !== undefined) updates.social_github = socialLinks.github;
+      if (socialLinks.linkedin !== undefined) updates.social_linkedin = socialLinks.linkedin;
+      if (socialLinks.youtube !== undefined) updates.social_youtube = socialLinks.youtube;
+      if (socialLinks.discord !== undefined) updates.social_discord = socialLinks.discord;
     }
 
-    const user = await User.findByIdAndUpdate(
-      req.userId,
-      { $set: updateData },
-      { new: true }
-    ).select('-password');
+    const user = userHelpers.update(req.userId, updates);
 
     res.json({
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        isOnboarded: user.isOnboarded,
-        profile: user.profile,
-        stats: user.stats
-      }
+      user: userHelpers.toApiFormat(user)
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

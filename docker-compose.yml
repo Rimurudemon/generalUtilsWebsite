@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # Backend Service (with SQLite - no external database needed)
+  backend:
+    build:
+      context: ./backend
+      target: development # Targets the 'development' stage in Dockerfile
+    container_name: gen_website_backend
+    restart: always
+    ports:
+      - "5000:5000" # Maps port 5000 inside to 5000 outside
+    environment:
+      - PORT=5000
+    volumes:
+      - ./backend:/app # Syncs local folder to container (Hot Updates!)
+      - /app/node_modules # Prevents local node_modules from overwriting container's
+      - sqlite_data:/app/data # Persist SQLite database
+    env_file:
+      - ./backend/.env
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      target: development # Targets the 'development' stage in Dockerfile
+    container_name: gen_website_frontend
+    restart: always
+    ports:
+      - "5173:5173" # Standard Vite port
+    volumes:
+      - ./frontend:/app # Syncs local folder to container (Hot Updates!)
+      - /app/node_modules # Prevents local node_modules from overwriting container's
+    environment:
+      - VITE_API_URL=http://localhost:5000 
+      # Note: Browser runs on host, so localhost:5000 refers to host's mapped backend port
+    depends_on:
+      - backend
+
+volumes:
+  sqlite_data: # Named volume for SQLite database persistence

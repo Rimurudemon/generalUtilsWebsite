@@ -1,0 +1,15 @@
+# Dependency directories
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build outputs
+dist
+build
+out
+
+# Environment variables (optional, usually we don't copy .env to image for security, but compose handles it)
+.env
+.env.local
+.DS_Store
+Thumbs.db
