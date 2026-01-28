@@ -1,5 +1,6 @@
 # Stage 1: Base
-FROM node:18-alpine AS base
+# Using node:20-alpine for Vite compatibility (requires Node.js 20.19+)
+FROM node:20-alpine AS base
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
@@ -17,4 +18,8 @@ FROM base AS builder
 COPY . .
 RUN npm run build
 
-
+# Stage 4: Production (optional - serves static files with nginx)
+FROM nginx:alpine AS production
+COPY --from=builder /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
